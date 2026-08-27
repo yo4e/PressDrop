@@ -51,6 +51,22 @@ Human review / publish
 
 The normalized article model is the key boundary. Input formats and WordPress sites should be replaceable without rewriting the whole pipeline.
 
+## Initial implementation target
+
+The first useful PressDrop slice is intentionally concrete:
+
+> **Give PressDrop a Markdown manuscript plus its image files, and it creates a WordPress draft using explicit submission rules.**
+
+The manuscript should be able to specify exact image positions, captions, credits, alt text, categories, tags, featured image, and simple metadata. PressDrop uploads/reuses the supplied images, maps the requested taxonomy and metadata, generates standard Gutenberg blocks, and creates a reviewable `draft`.
+
+Markdown is the first adapter, not the permanent product boundary. The reusable concept is:
+
+```text
+manuscript + assets + submission rules → PressDrop → WordPress draft
+```
+
+See [Initial Implementation Target](docs/INITIAL_IMPLEMENTATION.md) for the first vertical slice and acceptance criteria.
+
 ## Design principles
 
 ### 1. Draft first
@@ -156,6 +172,7 @@ The important decision is the architecture, not the framework. See [DESIGN.md](d
 ├── README.md
 └── docs/
     ├── DESIGN.md
+    ├── INITIAL_IMPLEMENTATION.md
     └── research/
         └── wordpress-submission-assistant-research.md
 ```
