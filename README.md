@@ -6,7 +6,7 @@ PressDrop is an experimental, general-purpose submission assistant for turning s
 
 The goal is not to replace WordPress, invent another CMS, or generate articles with AI. PressDrop focuses on the awkward middle step between a finished manuscript and a correctly structured WordPress draft: parsing the manuscript, validating its structure, uploading media, mapping metadata, generating Gutenberg blocks, and creating a draft that a human can review.
 
-> Status: **design / pre-MVP**. The architecture is being defined before implementation begins.
+> Status: **first local vertical slice implemented**. Markdown + local images can now be parsed, normalized, validated, inspected, and serialized to Gutenberg locally. WordPress connection and remote side effects are not implemented yet.
 
 ## Why PressDrop?
 
@@ -57,7 +57,7 @@ The first useful PressDrop slice is intentionally concrete:
 
 > **Give PressDrop a Markdown manuscript plus its image files, and it creates a WordPress draft using explicit submission rules.**
 
-The manuscript should be able to specify exact image positions, captions, credits, alt text, categories, tags, featured image, and simple metadata. PressDrop uploads/reuses the supplied images, maps the requested taxonomy and metadata, generates standard Gutenberg blocks, and creates a reviewable `draft`.
+The manuscript should be able to specify exact image positions, captions, credits, alt text, categories, tags, featured image, and simple metadata. PressDrop will eventually upload/reuse the supplied images, map the requested taxonomy and metadata, generate standard Gutenberg blocks, and create a reviewable `draft`.
 
 Markdown is the first adapter, not the permanent product boundary. The reusable concept is:
 
@@ -65,7 +65,46 @@ Markdown is the first adapter, not the permanent product boundary. The reusable 
 manuscript + assets + submission rules → PressDrop → WordPress draft
 ```
 
-See [Initial Implementation Target](docs/INITIAL_IMPLEMENTATION.md) for the first vertical slice and acceptance criteria.
+See [Initial Implementation Target](docs/INITIAL_IMPLEMENTATION.md) for the larger vertical slice and acceptance criteria.
+
+## Local vertical slice
+
+Issue #3 implements the side-effect-free half of that pipeline:
+
+```text
+Markdown + local images
+        ↓
+parse / normalize
+        ↓
+validate
+        ↓
+inspectable normalized Article JSON
+        ↓
+local Gutenberg serialization
+```
+
+The canonical fixture lives in [`examples/basic/`](examples/basic/). The implemented manuscript rules are documented in [PressDrop Markdown v1](docs/MARKDOWN_V1.md).
+
+Requirements: Node.js 22.6 or later. The current implementation uses Node's built-in TypeScript type stripping so the first slice stays dependency-free.
+
+```bash
+npm run inspect
+npm run gutenberg
+npm test
+```
+
+To inspect another bundle:
+
+```bash
+node --experimental-strip-types src/cli.ts inspect path/to/bundle
+node --experimental-strip-types src/cli.ts gutenberg path/to/bundle
+```
+
+`inspect` emits deterministic normalized JSON including source identity/fingerprint, ordered content blocks, local media references, categories, tags, metadata, and the featured image reference. `gutenberg` emits standard paragraph, heading, and image block serialization with deterministic `pressdrop://...` placeholders where uploaded WordPress media URLs will later be substituted.
+
+Validation happens before generation. Missing images, malformed or unknown fields/directives, unsupported heading levels, unsafe raw HTML, invalid taxonomy values, and incomplete image metadata fail visibly with structured error codes.
+
+**No WordPress credentials, uploads, REST calls, draft creation, or publishing occur in this slice.**
 
 ## Design principles
 
@@ -154,40 +193,53 @@ Google Docs can initially be handled through DOCX export; a native Google Docs a
 
 ## Proposed technical direction
 
-The implementation stack is not locked yet, but a TypeScript/Node.js core is a strong candidate because the current design can reuse mature libraries in the same ecosystem:
+The broader implementation stack is not locked yet. The local slice establishes a TypeScript/Node.js core and normalized Article boundary without adding runtime dependencies. Future adapters and WordPress integration may reuse mature libraries in the same ecosystem:
 
 - `mammoth` for DOCX → semantic HTML
-- `remark` for Markdown parsing
-- `rehype` for HTML parsing/transformation/sanitization
-- JSON Schema / TypeScript types for the normalized article model
+- `remark` / `rehype` if broader Markdown/HTML syntax makes a full AST parser preferable to the intentionally small Markdown v1 grammar
+- JSON Schema validators as the normalized model grows
 - WordPress REST API for posts, media, categories, tags, and exposed metadata
 - WordPress block serialization/parser packages for Gutenberg validation
 
-The important decision is the architecture, not the framework. See [DESIGN.md](docs/DESIGN.md).
+The important decision is the architecture, not a particular framework. See [DESIGN.md](docs/DESIGN.md).
 
 ## Repository structure
 
 ```text
 .
+├── .github/workflows/test.yml
+├── examples/basic/
+│   ├── article.md
+│   └── images/
+├── src/
+│   ├── cli.ts
+│   ├── errors.ts
+│   ├── frontmatter.ts
+│   ├── gutenberg.ts
+│   ├── markdown.ts
+│   ├── model.ts
+│   ├── pipeline.ts
+│   └── validation.ts
+├── test/pressdrop.test.ts
+├── package.json
 ├── README.md
 └── docs/
     ├── DESIGN.md
     ├── INITIAL_IMPLEMENTATION.md
+    ├── MARKDOWN_V1.md
     └── research/
         └── wordpress-submission-assistant-research.md
 ```
-
-This will expand once implementation begins.
 
 ## Current questions
 
 Several product decisions intentionally remain open:
 
 - Should the first user-facing form be a CLI, local web app, desktop app, or hosted service?
-- What is the smallest useful manuscript template for non-technical editors?
 - How should site profiles express custom fields and site-specific Gutenberg blocks?
 - How much state should PressDrop persist locally for idempotency and audit history?
 - Should native Google Docs support arrive before or after the first DOCX/Markdown vertical slice?
+- When should the deliberately small Markdown v1 grammar move to a full Markdown AST implementation?
 
 These are tracked as design questions rather than silently fixed in code.
 
