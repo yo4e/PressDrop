@@ -4,7 +4,14 @@ export type PressDropErrorCode =
   | "VALIDATION_ERROR"
   | "MISSING_MEDIA"
   | "UNSUPPORTED_BLOCK"
-  | "GUTENBERG_VALIDATION_ERROR";
+  | "GUTENBERG_VALIDATION_ERROR"
+  | "SITE_PROFILE_ERROR"
+  | "AUTH_ERROR"
+  | "TAXONOMY_RESOLUTION_ERROR"
+  | "MEDIA_UPLOAD_ERROR"
+  | "POST_CREATE_ERROR"
+  | "STATE_ERROR"
+  | "DUPLICATE_CANDIDATE";
 
 export class PressDropError extends Error {
   readonly code: PressDropErrorCode;

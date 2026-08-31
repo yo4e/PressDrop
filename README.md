@@ -6,7 +6,7 @@ PressDrop is an experimental, general-purpose submission assistant for turning s
 
 The goal is not to replace WordPress, invent another CMS, or generate articles with AI. PressDrop focuses on the awkward middle step between a finished manuscript and a correctly structured WordPress draft: parsing the manuscript, validating its structure, uploading media, mapping metadata, generating Gutenberg blocks, and creating a draft that a human can review.
 
-> Status: **first local vertical slice implemented**. Markdown + local images can now be parsed, normalized, validated, inspected, and serialized to Gutenberg locally. WordPress connection and remote side effects are not implemented yet.
+> Status: **first WordPress submission slice implemented against deterministic mocks**. Markdown + local images can be parsed, normalized, validated, uploaded/mapped through the WordPress REST contract, and turned into a `draft`. Live WordPress verification is still pending.
 
 ## Why PressDrop?
 
@@ -57,7 +57,7 @@ The first useful PressDrop slice is intentionally concrete:
 
 > **Give PressDrop a Markdown manuscript plus its image files, and it creates a WordPress draft using explicit submission rules.**
 
-The manuscript should be able to specify exact image positions, captions, credits, alt text, categories, tags, featured image, and simple metadata. PressDrop will eventually upload/reuse the supplied images, map the requested taxonomy and metadata, generate standard Gutenberg blocks, and create a reviewable `draft`.
+The manuscript can specify exact image positions, captions, credits, alt text, categories, tags, featured image, and simple metadata. The current WordPress slice can resolve existing taxonomy terms, upload the supplied images, substitute real media IDs/URLs into Gutenberg blocks, and create a reviewable `draft` using explicit runtime configuration.
 
 Markdown is the first adapter, not the permanent product boundary. The reusable concept is:
 
@@ -85,7 +85,7 @@ local Gutenberg serialization
 
 The canonical fixture lives in [`examples/basic/`](examples/basic/). The implemented manuscript rules are documented in [PressDrop Markdown v1](docs/MARKDOWN_V1.md).
 
-Requirements: Node.js 22.6 or later. The current implementation uses Node's built-in TypeScript type stripping so the first slice stays dependency-free.
+Requirements: Node.js 22.6 or later. The current implementation uses Node's built-in TypeScript type stripping so the first slices stay dependency-free.
 
 ```bash
 npm run inspect
@@ -100,11 +100,73 @@ node --experimental-strip-types src/cli.ts inspect path/to/bundle
 node --experimental-strip-types src/cli.ts gutenberg path/to/bundle
 ```
 
-`inspect` emits deterministic normalized JSON including source identity/fingerprint, ordered content blocks, local media references, categories, tags, metadata, and the featured image reference. `gutenberg` emits standard paragraph, heading, and image block serialization with deterministic `pressdrop://...` placeholders where uploaded WordPress media URLs will later be substituted.
+`inspect` emits deterministic normalized JSON including source identity/fingerprint, ordered content blocks, local media references, categories, tags, metadata, and the featured image reference. `gutenberg` emits standard paragraph, heading, and image block serialization with deterministic `pressdrop://...` placeholders.
 
 Validation happens before generation. Missing images, malformed or unknown fields/directives, unsupported heading levels, unsafe raw HTML, invalid taxonomy values, and incomplete image metadata fail visibly with structured error codes.
 
-**No WordPress credentials, uploads, REST calls, draft creation, or publishing occur in this slice.**
+These local commands have **no WordPress side effects**.
+
+## WordPress draft submission slice
+
+Issue #5 adds the first remote boundary without changing the Markdown parser contract:
+
+```text
+validated normalized Article
+        ↓
+resolve existing categories / tags
+        ↓
+upload media
+        ↓
+substitute WordPress media IDs / URLs
+        ↓
+Gutenberg serialization
+        ↓
+create status=draft post
+        ↓
+persist retry state
+```
+
+The site profile contains only non-secret connection identity. Start from [`config/site.example.json`](config/site.example.json):
+
+```json
+{
+  "id": "example-publication",
+  "baseUrl": "https://wordpress.example.com",
+  "postType": "posts"
+}
+```
+
+Credentials are supplied only at runtime:
+
+```bash
+export PRESSDROP_WP_USERNAME='pressdrop-user'
+export PRESSDROP_WP_APP_PASSWORD='xxxx xxxx xxxx xxxx xxxx xxxx'
+```
+
+Submission is an explicit command:
+
+```bash
+node --experimental-strip-types src/cli.ts submit \
+  path/to/bundle \
+  config/my-site.json
+```
+
+The default local retry state is `.pressdrop/state.json`, which is ignored by Git. A different state path can be supplied as the final CLI argument or through `PRESSDROP_STATE_FILE`.
+
+The current WordPress behavior is intentionally strict:
+
+- HTTPS is required outside test-only mock mode;
+- requested categories/tags must already exist and match exactly;
+- missing taxonomy terms block the run before media upload;
+- media IDs/URLs returned by WordPress replace local placeholders in final Gutenberg content;
+- inline image alt/caption metadata is sent to the media endpoint while credit remains a separate normalized value rendered in the Gutenberg caption;
+- the post endpoint always receives `status: draft`;
+- an identical completed submission is reused without new REST side effects;
+- if a media upload or draft creation may have succeeded but its HTTP result was lost, automatic retry stops with `DUPLICATE_CANDIDATE` instead of risking a duplicate.
+
+Automated tests use a deterministic local mock WordPress server; CI needs no credentials or live site. **Compatibility with a real WordPress installation is still pending a test-site shakeout.**
+
+See [WordPress draft submission](docs/WORDPRESS_SUBMISSION.md) for configuration, REST behavior, state semantics, and live-verification boundaries.
 
 ## Design principles
 
@@ -120,7 +182,7 @@ AI-assisted interpretation may be explored later, but correctness and reproducib
 
 ### 3. One core model, many adapters
 
-DOCX, Markdown, Google Docs, and HTML should converge on one normalized article representation. WordPress-specific output should consume that representation rather than knowing how every source format works.
+DOCX, Markdown, Google Docs, and HTML should converge on one normalized article representation. Downstream WordPress code consumes that representation rather than knowing how every source format works.
 
 ### 4. WordPress-native output
 
@@ -128,7 +190,7 @@ Where practical, PressDrop should generate standard Gutenberg blocks and use off
 
 ### 5. Idempotent by design
 
-Re-running the same manuscript should not casually create duplicate posts or duplicate media. Manuscript IDs/hashes, WordPress post IDs, and media hashes should be tracked so retries are safe.
+Re-running the same manuscript should not casually create duplicate posts or duplicate media. The current baseline records source/profile identity plus remote media/post results and stops conservatively when remote success is ambiguous.
 
 ### 6. Site-specific behavior belongs in configuration
 
@@ -177,7 +239,7 @@ Google Docs can initially be handled through DOCX export; a native Google Docs a
 - show a preview or normalized representation before upload
 - clearly report conversion warnings
 - avoid duplicate posts/media on retry
-- return the created WordPress draft URL
+- return the created WordPress draft identity / URL
 
 ## Not in the initial MVP
 
@@ -193,13 +255,12 @@ Google Docs can initially be handled through DOCX export; a native Google Docs a
 
 ## Proposed technical direction
 
-The broader implementation stack is not locked yet. The local slice establishes a TypeScript/Node.js core and normalized Article boundary without adding runtime dependencies. Future adapters and WordPress integration may reuse mature libraries in the same ecosystem:
+The broader implementation stack is not locked yet. The current slices establish a dependency-free TypeScript/Node.js core, normalized Article boundary, and WordPress REST adapter. Future adapters and richer WordPress integration may reuse mature libraries in the same ecosystem:
 
 - `mammoth` for DOCX → semantic HTML
 - `remark` / `rehype` if broader Markdown/HTML syntax makes a full AST parser preferable to the intentionally small Markdown v1 grammar
 - JSON Schema validators as the normalized model grows
-- WordPress REST API for posts, media, categories, tags, and exposed metadata
-- WordPress block serialization/parser packages for Gutenberg validation
+- WordPress block parser/serialization packages for stronger Gutenberg round-trip validation
 
 The important decision is the architecture, not a particular framework. See [DESIGN.md](docs/DESIGN.md).
 
@@ -208,6 +269,9 @@ The important decision is the architecture, not a particular framework. See [DES
 ```text
 .
 ├── .github/workflows/test.yml
+├── .gitignore
+├── config/
+│   └── site.example.json
 ├── examples/basic/
 │   ├── article.md
 │   └── images/
@@ -219,14 +283,22 @@ The important decision is the architecture, not a particular framework. See [DES
 │   ├── markdown.ts
 │   ├── model.ts
 │   ├── pipeline.ts
-│   └── validation.ts
-├── test/pressdrop.test.ts
+│   ├── validation.ts
+│   └── wordpress/
+│       ├── client.ts
+│       ├── site-profile.ts
+│       ├── state.ts
+│       └── submit.ts
+├── test/
+│   ├── pressdrop.test.ts
+│   └── wordpress.test.ts
 ├── package.json
 ├── README.md
 └── docs/
     ├── DESIGN.md
     ├── INITIAL_IMPLEMENTATION.md
     ├── MARKDOWN_V1.md
+    ├── WORDPRESS_SUBMISSION.md
     └── research/
         └── wordpress-submission-assistant-research.md
 ```
@@ -237,7 +309,8 @@ Several product decisions intentionally remain open:
 
 - Should the first user-facing form be a CLI, local web app, desktop app, or hosted service?
 - How should site profiles express custom fields and site-specific Gutenberg blocks?
-- How much state should PressDrop persist locally for idempotency and audit history?
+- How should explicit featured-image alt/caption metadata be represented in a future manuscript schema?
+- What reconciliation workflow should resolve `DUPLICATE_CANDIDATE` state after ambiguous remote outcomes?
 - Should native Google Docs support arrive before or after the first DOCX/Markdown vertical slice?
 - When should the deliberately small Markdown v1 grammar move to a full Markdown AST implementation?
 
