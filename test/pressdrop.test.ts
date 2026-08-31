@@ -69,6 +69,17 @@ test("canonical bundle generates inspectable Gutenberg blocks with local placeho
   assert.match(content, /Photo: PressDrop sample/);
 });
 
+test("uploaded media mapping produces WordPress image ids and URLs", async () => {
+  const { article } = await inspectBundle(example);
+  const content = generateGutenberg(article, {
+    "media:images/photo-01.png": { id: 44, url: "https://cdn.example.test/photo-01.png" },
+    "media:images/photo-02.png": { id: 45, url: "https://cdn.example.test/photo-02.png" },
+  });
+  assert.match(content, /<!-- wp:image \{"id":44,"sizeSlug":"full"\} -->/);
+  assert.match(content, /class="wp-image-44"/);
+  assert.match(content, /https:\/\/cdn\.example\.test\/photo-01\.png/);
+});
+
 test("repeated inspection is deterministic", async () => {
   const first = await inspectBundle(example);
   const second = await inspectBundle(example);

@@ -1,6 +1,13 @@
 import { PressDropError } from "./errors.ts";
 import type { ArticleBlock, NormalizedArticle } from "./model.ts";
 
+export interface GutenbergMedia {
+  id: number;
+  url: string;
+}
+
+export type GutenbergMediaMap = Readonly<Record<string, GutenbergMedia>>;
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -15,7 +22,7 @@ function mediaPlaceholder(mediaRef: string): string {
   return `pressdrop://${encodeURI(mediaPath).replaceAll('"', "%22")}`;
 }
 
-function serializeBlock(block: ArticleBlock): string {
+function serializeBlock(block: ArticleBlock, mediaMap?: GutenbergMediaMap): string {
   if (block.type === "paragraph") {
     return `<!-- wp:paragraph -->\n<p>${escapeHtml(block.text)}</p>\n<!-- /wp:paragraph -->`;
   }
@@ -24,9 +31,12 @@ function serializeBlock(block: ArticleBlock): string {
     return `<!-- wp:heading {"level":${block.level}} -->\n<h${block.level} class="wp-block-heading">${escapeHtml(block.text)}</h${block.level}>\n<!-- /wp:heading -->`;
   }
 
-  const src = mediaPlaceholder(block.mediaRef);
+  const media = mediaMap?.[block.mediaRef];
+  const src = media?.url ?? mediaPlaceholder(block.mediaRef);
+  const attributes = media ? ` {"id":${media.id},"sizeSlug":"full"}` : "";
+  const imageClass = media ? ` class="wp-image-${media.id}"` : "";
   const caption = `${escapeHtml(block.caption)} <span class="pressdrop-image-credit">${escapeHtml(block.credit)}</span>`;
-  return `<!-- wp:image -->\n<figure class="wp-block-image"><img src="${src}" alt="${escapeHtml(block.alt)}"/><figcaption class="wp-element-caption">${caption}</figcaption></figure>\n<!-- /wp:image -->`;
+  return `<!-- wp:image${attributes} -->\n<figure class="wp-block-image size-full"><img src="${escapeHtml(src)}" alt="${escapeHtml(block.alt)}"${imageClass}/><figcaption class="wp-element-caption">${caption}</figcaption></figure>\n<!-- /wp:image -->`;
 }
 
 export function validateGutenbergSerialization(content: string, expectedBlocks: number): void {
@@ -40,8 +50,8 @@ export function validateGutenbergSerialization(content: string, expectedBlocks: 
   }
 }
 
-export function generateGutenberg(article: NormalizedArticle): string {
-  const content = article.blocks.map(serializeBlock).join("\n\n");
+export function generateGutenberg(article: NormalizedArticle, mediaMap?: GutenbergMediaMap): string {
+  const content = article.blocks.map((block) => serializeBlock(block, mediaMap)).join("\n\n");
   validateGutenbergSerialization(content, article.blocks.length);
   return content;
 }

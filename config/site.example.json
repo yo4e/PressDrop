@@ -1,0 +1,5 @@
+{
+  "id": "example-publication",
+  "baseUrl": "https://wordpress.example.com",
+  "postType": "posts"
+}
