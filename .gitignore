@@ -1,1 +1,3 @@
 .pressdrop/
+node_modules/
+dist/

@@ -8,6 +8,14 @@ The goal is not to replace WordPress, invent another CMS, or generate articles w
 
 > Status: **first WordPress submission slice implemented against deterministic mocks**. Markdown + local images can be parsed, normalized, validated, uploaded/mapped through the WordPress REST contract, and turned into a `draft`. Live WordPress verification is still pending.
 
+## UI prototype
+
+The first human-facing submission flow is available as a responsive browser prototype:
+
+**[Open the PressDrop UI prototype](https://yo4e.github.io/PressDrop/)**
+
+It covers manuscript selection, validation and warning states, article preview, WordPress destination setup, explicit draft creation, progress, success, authentication failure, taxonomy mismatch, and duplicate-candidate handling. The current site uses realistic sample data and does not parse dropped bundles or contact WordPress yet; those integrations remain a follow-up implementation step.
+
 ## Why PressDrop?
 
 Writers and editors often finish an article in Google Docs, Word, Markdown, or another authoring environment, then manually repeat the same work in WordPress:
