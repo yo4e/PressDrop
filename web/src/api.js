@@ -22,10 +22,10 @@ export const pressDropApi = {
       body: JSON.stringify({ bundleDir, profilePath, username, applicationPassword }),
     });
   },
-  startSubmission({ bundleDir, profilePath, username, applicationPassword }) {
+  startSubmission({ bundleDir, profilePath, username, applicationPassword, expectedSourceFingerprint }) {
     return request("/api/submissions", {
       method: "POST",
-      body: JSON.stringify({ bundleDir, profilePath, username, applicationPassword }),
+      body: JSON.stringify({ bundleDir, profilePath, username, applicationPassword, expectedSourceFingerprint }),
     });
   },
   getSubmission(jobId) {
