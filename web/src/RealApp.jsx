@@ -326,6 +326,7 @@ export function RealApp() {
     try {
       const data = await pressDropApi.preflight({ bundleDir, ...nextConnection });
       setConnection(nextConnection);
+      setInspection({ article: data.article, warnings: data.warnings });
       setPreflight(data);
       setError(null);
       setSiteDialogOpen(false);
@@ -347,7 +348,11 @@ export function RealApp() {
     }
     setBusy(true);
     try {
-      const started = await pressDropApi.startSubmission({ bundleDir, ...connection });
+      const started = await pressDropApi.startSubmission({
+        bundleDir,
+        ...connection,
+        expectedSourceFingerprint: preflight.article.source.fingerprint,
+      });
       setConnection((value) => ({ ...value, applicationPassword: "" }));
       setJob({ id: started.jobId, status: started.status, phase: started.phase });
       setScreen("submitting");
