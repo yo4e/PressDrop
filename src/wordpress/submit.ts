@@ -34,6 +34,7 @@ export interface SubmitBundleOptions {
   credentials: WordPressCredentials;
   stateStore: SubmissionStateStore;
   clientOptions?: WordPressClientOptions;
+  expectedSourceFingerprint?: string;
   onProgress?: (phase: SubmissionProgressPhase) => void;
 }
 
@@ -84,6 +85,13 @@ export async function preflightBundle(options: PreflightBundleOptions): Promise<
 export async function submitBundle(options: SubmitBundleOptions): Promise<SubmissionResult> {
   const bundleDir = path.resolve(options.bundleDir);
   const { article, warnings } = await inspectBundle(bundleDir);
+  if (options.expectedSourceFingerprint && article.source.fingerprint !== options.expectedSourceFingerprint) {
+    throw new PressDropError(
+      "VALIDATION_ERROR",
+      "The manuscript bundle changed after preview; inspect it again before creating a WordPress draft",
+      { expectedSourceFingerprint: options.expectedSourceFingerprint, actualSourceFingerprint: article.source.fingerprint },
+    );
+  }
   const key = submissionKey(options.profile, article.source.fingerprint);
   let record = await options.stateStore.get(key);
 
