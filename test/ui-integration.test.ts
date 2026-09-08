@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
+import { PressDropError } from "../src/errors.ts";
 import { createPressDropWebServer } from "../src/web-server.ts";
 import { normalizeSiteProfile } from "../src/wordpress/site-profile.ts";
 import { MemorySubmissionStateStore } from "../src/wordpress/state.ts";
@@ -67,6 +68,27 @@ test("preflight resolves taxonomy through the real client without media or post 
   assert.equal(result.article.title, "PressDropで、原稿からWordPress入稿をほどく");
   assert.ok(wp.calls.every((call) => call.method === "GET"));
   assert.ok(wp.calls.every((call) => !new URL(call.url).pathname.endsWith("/media") && !new URL(call.url).pathname.endsWith("/posts")));
+});
+
+test("changed manuscript fingerprint blocks submission before any WordPress request", async () => {
+  const wp = fakeWordPress();
+  await assert.rejects(
+    () => submitBundle({
+      bundleDir: example,
+      profile,
+      credentials,
+      stateStore: new MemorySubmissionStateStore(),
+      clientOptions: { fetchImpl: wp.fetchImpl },
+      expectedSourceFingerprint: "sha256:not-the-previewed-bundle",
+    }),
+    (error) => {
+      assert.ok(error instanceof PressDropError);
+      assert.equal(error.code, "VALIDATION_ERROR");
+      assert.match(error.message, /changed after preview/);
+      return true;
+    },
+  );
+  assert.equal(wp.calls.length, 0);
 });
 
 test("submission progress comes from the real pipeline and completed retry is reused", async () => {
