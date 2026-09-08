@@ -1,10 +1,13 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { App } from "./App.jsx";
+import { App as DemoApp } from "./App.jsx";
+import { RealApp } from "./RealApp.jsx";
 import "./styles.css";
+
+const demoMode = new URLSearchParams(window.location.search).get("demo") === "1";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
-    <App />
+    {demoMode ? <DemoApp /> : <RealApp />}
   </React.StrictMode>,
 );
