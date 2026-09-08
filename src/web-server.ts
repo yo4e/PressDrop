@@ -204,6 +204,7 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
       if (req.method === "POST" && url.pathname === "/api/submissions") {
         const body = await readJson(req);
         const bundleDir = requireText(body, "bundleDir");
+        const expectedSourceFingerprint = requireText(body, "expectedSourceFingerprint");
         const profile = await loadSiteProfile(requireText(body, "profilePath"));
         const credentials = credentialsFrom(body);
         const id = randomUUID();
@@ -222,6 +223,7 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
           profile,
           credentials,
           stateStore: new JsonSubmissionStateStore(stateFile),
+          expectedSourceFingerprint,
           onProgress: (phase) => { job.phase = phase; },
         }).then((result) => {
           job.phase = "completed";
