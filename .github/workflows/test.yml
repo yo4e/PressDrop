@@ -16,5 +16,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
       - run: npm ci
-      - run: npm test
+      - run: npm --prefix web ci
+      - run: npm run check
