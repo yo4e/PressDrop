@@ -4,7 +4,7 @@ import { App as DemoApp } from "./App.jsx";
 import { RealApp } from "./RealApp.jsx";
 import "./styles.css";
 
-const demoMode = new URLSearchParams(window.location.search).get("demo") === "1";
+const demoMode = import.meta.env.VITE_PRESSDROP_DEMO === "1" || new URLSearchParams(window.location.search).get("demo") === "1";
 
 createRoot(document.getElementById("root")).render(
   <React.StrictMode>
