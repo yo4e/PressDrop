@@ -4,8 +4,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import path from "node:path";
 import { PressDropError } from "./errors.ts";
 import { inspectBundle } from "./pipeline.ts";
+import type { WordPressClientOptions } from "./wordpress/client.ts";
 import { loadSiteProfile } from "./wordpress/site-profile.ts";
-import { JsonSubmissionStateStore } from "./wordpress/state.ts";
+import { JsonSubmissionStateStore, submissionKey, type SubmissionStateRecord } from "./wordpress/state.ts";
 import {
   preflightBundle,
   submitBundle,
@@ -18,13 +19,14 @@ const JOB_RETENTION_MS = 60 * 60 * 1000;
 
 type JobPhase = "local_validation" | SubmissionProgressPhase;
 type JobStatus = "running" | "completed" | "failed";
+type RemoteMutation = "none" | "media_may_have_changed" | "media_changed_draft_may_exist" | "completed";
 
 interface ApiFailure {
   code: string;
   message: string;
   details?: Record<string, unknown>;
   phase: JobPhase;
-  remoteMutation: "none" | "media_may_have_changed" | "media_changed_draft_may_exist" | "completed";
+  remoteMutation: RemoteMutation;
   duplicateKind?: "media_result_unknown" | "post_result_unknown";
 }
 
@@ -40,6 +42,7 @@ interface SubmissionJob {
 interface WebServerOptions {
   stateFile?: string;
   webDistDir?: string;
+  clientOptions?: WordPressClientOptions;
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -86,26 +89,45 @@ function requireText(body: Record<string, unknown>, key: string): string {
   return value.trim();
 }
 
-function remoteMutationFor(phase: JobPhase): ApiFailure["remoteMutation"] {
+function remoteMutationFor(phase: JobPhase): RemoteMutation {
   if (phase === "uploading_media") return "media_may_have_changed";
   if (phase === "creating_post") return "media_changed_draft_may_exist";
   if (phase === "completed") return "completed";
   return "none";
 }
 
-function apiFailure(error: unknown, phase: JobPhase): ApiFailure {
+function remoteMutationFromState(record: SubmissionStateRecord | undefined): RemoteMutation {
+  if (!record) return "none";
+  if (record.phase === "completed" && record.post) return "completed";
+  if (record.phase === "creating_post") return "media_changed_draft_may_exist";
+  if (record.pendingMediaRef || Object.keys(record.media).length > 0) return "media_may_have_changed";
+  return "none";
+}
+
+function strongestRemoteMutation(...values: RemoteMutation[]): RemoteMutation {
+  const rank: Record<RemoteMutation, number> = {
+    none: 0,
+    media_may_have_changed: 1,
+    media_changed_draft_may_exist: 2,
+    completed: 3,
+  };
+  return values.reduce((strongest, value) => rank[value] > rank[strongest] ? value : strongest, "none");
+}
+
+function apiFailure(error: unknown, phase: JobPhase, priorRemoteMutation: RemoteMutation = "none"): ApiFailure {
   if (error instanceof PressDropError) {
     const duplicateKind = error.code === "DUPLICATE_CANDIDATE"
       ? (typeof error.details?.mediaRef === "string" ? "media_result_unknown" : "post_result_unknown")
       : undefined;
+    const currentRemoteMutation = error.code === "DUPLICATE_CANDIDATE"
+      ? duplicateKind === "media_result_unknown" ? "media_may_have_changed" : "media_changed_draft_may_exist"
+      : remoteMutationFor(phase);
     return {
       code: error.code,
       message: error.message,
       ...(error.details ? { details: error.details } : {}),
       phase,
-      remoteMutation: error.code === "DUPLICATE_CANDIDATE"
-        ? duplicateKind === "media_result_unknown" ? "media_may_have_changed" : "media_changed_draft_may_exist"
-        : remoteMutationFor(phase),
+      remoteMutation: strongestRemoteMutation(priorRemoteMutation, currentRemoteMutation),
       ...(duplicateKind ? { duplicateKind } : {}),
     };
   }
@@ -113,7 +135,7 @@ function apiFailure(error: unknown, phase: JobPhase): ApiFailure {
     code: "INTERNAL_ERROR",
     message: "Unexpected PressDrop server error",
     phase,
-    remoteMutation: remoteMutationFor(phase),
+    remoteMutation: strongestRemoteMutation(priorRemoteMutation, remoteMutationFor(phase)),
   };
 }
 
@@ -171,6 +193,7 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
   const stateFile = options.stateFile ?? process.env.PRESSDROP_STATE_FILE ?? ".pressdrop/state.json";
   const webDistDir = options.webDistDir ?? path.resolve("web/dist");
   const jobs = new Map<string, SubmissionJob>();
+  const activeSubmissionKeys = new Set<string>();
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -196,7 +219,12 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
         const body = await readJson(req);
         const bundleDir = requireText(body, "bundleDir");
         const profile = await loadSiteProfile(requireText(body, "profilePath"));
-        const result = await preflightBundle({ bundleDir, profile, credentials: credentialsFrom(body) });
+        const result = await preflightBundle({
+          bundleDir,
+          profile,
+          credentials: credentialsFrom(body),
+          clientOptions: options.clientOptions,
+        });
         sendJson(res, 200, { ...result, profile });
         return;
       }
@@ -207,6 +235,25 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
         const expectedSourceFingerprint = requireText(body, "expectedSourceFingerprint");
         const profile = await loadSiteProfile(requireText(body, "profilePath"));
         const credentials = credentialsFrom(body);
+        const key = submissionKey(profile, expectedSourceFingerprint);
+        if (activeSubmissionKeys.has(key)) {
+          throw new PressDropError(
+            "STATE_ERROR",
+            "An identical submission is already running; wait for it to finish before retrying",
+            { submissionKey: key },
+          );
+        }
+        activeSubmissionKeys.add(key);
+
+        const stateStore = new JsonSubmissionStateStore(stateFile);
+        let priorRemoteMutation: RemoteMutation;
+        try {
+          priorRemoteMutation = remoteMutationFromState(await stateStore.get(key));
+        } catch (error) {
+          activeSubmissionKeys.delete(key);
+          throw error;
+        }
+
         const id = randomUUID();
         const job: SubmissionJob = {
           id,
@@ -222,7 +269,8 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
           bundleDir,
           profile,
           credentials,
-          stateStore: new JsonSubmissionStateStore(stateFile),
+          stateStore,
+          clientOptions: options.clientOptions,
           expectedSourceFingerprint,
           onProgress: (phase) => { job.phase = phase; },
         }).then((result) => {
@@ -231,7 +279,9 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
           job.result = result;
         }).catch((error: unknown) => {
           job.status = "failed";
-          job.error = apiFailure(error, job.phase);
+          job.error = apiFailure(error, job.phase, priorRemoteMutation);
+        }).finally(() => {
+          activeSubmissionKeys.delete(key);
         });
 
         sendJson(res, 202, { jobId: id, status: job.status, phase: job.phase });
