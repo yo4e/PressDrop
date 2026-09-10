@@ -12,6 +12,12 @@ async function request(path, options = {}) {
   return payload;
 }
 
+let activeSubmission = null;
+
+function submissionRequestKey({ bundleDir, profilePath, expectedSourceFingerprint }) {
+  return JSON.stringify([bundleDir, profilePath, expectedSourceFingerprint]);
+}
+
 export const pressDropApi = {
   inspect(bundleDir) {
     return request("/api/inspect", { method: "POST", body: JSON.stringify({ bundleDir }) });
@@ -22,11 +28,20 @@ export const pressDropApi = {
       body: JSON.stringify({ bundleDir, profilePath, username, applicationPassword }),
     });
   },
-  startSubmission({ bundleDir, profilePath, username, applicationPassword, expectedSourceFingerprint }) {
-    return request("/api/submissions", {
+  startSubmission(input) {
+    const key = submissionRequestKey(input);
+    if (activeSubmission?.key === key) return activeSubmission.promise;
+
+    const promise = request("/api/submissions", {
       method: "POST",
-      body: JSON.stringify({ bundleDir, profilePath, username, applicationPassword, expectedSourceFingerprint }),
+      body: JSON.stringify(input),
     });
+    activeSubmission = { key, promise };
+    const clear = () => {
+      if (activeSubmission?.promise === promise) activeSubmission = null;
+    };
+    promise.then(clear, clear);
+    return promise;
   },
   getSubmission(jobId) {
     return request(`/api/submissions/${encodeURIComponent(jobId)}`);
