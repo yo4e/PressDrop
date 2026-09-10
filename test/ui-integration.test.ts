@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import os from "node:os";
 import test from "node:test";
 import path from "node:path";
 import { PressDropError } from "../src/errors.ts";
+import { inspectBundle } from "../src/pipeline.ts";
 import { createPressDropWebServer } from "../src/web-server.ts";
 import { normalizeSiteProfile } from "../src/wordpress/site-profile.ts";
-import { MemorySubmissionStateStore } from "../src/wordpress/state.ts";
+import { JsonSubmissionStateStore, MemorySubmissionStateStore, submissionKey } from "../src/wordpress/state.ts";
 import { preflightBundle, submitBundle } from "../src/wordpress/submit.ts";
 
 const example = path.resolve("examples/basic");
@@ -38,13 +41,49 @@ function fakeWordPress() {
   return { calls, fetchImpl };
 }
 
-test("local web API exposes the real normalized fixture instead of prototype sample state", async () => {
-  const server = createPressDropWebServer();
+async function startLocalServer(options = {}) {
+  const server = createPressDropWebServer(options);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("server did not bind");
+  return {
+    server,
+    baseUrl: `http://127.0.0.1:${address.port}`,
+    close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
+  };
+}
+
+async function writeProfileFixture(directory: string): Promise<string> {
+  const profilePath = path.join(directory, "site.json");
+  await writeFile(profilePath, `${JSON.stringify({ id: profile.id, baseUrl: profile.baseUrl, postType: profile.postType })}\n`, "utf8");
+  return profilePath;
+}
+
+function submissionBody(profilePath: string, fingerprint: string) {
+  return {
+    bundleDir: example,
+    profilePath,
+    username: credentials.username,
+    applicationPassword: credentials.applicationPassword,
+    expectedSourceFingerprint: fingerprint,
+  };
+}
+
+async function waitForJob(baseUrl: string, jobId: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const response = await fetch(`${baseUrl}/api/submissions/${jobId}`);
+    assert.equal(response.status, 200);
+    const job = await response.json();
+    if (job.status !== "running") return job;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("submission job did not finish");
+}
+
+test("local web API exposes the real normalized fixture instead of prototype sample state", async () => {
+  const local = await startLocalServer();
   try {
-    const response = await fetch(`http://127.0.0.1:${address.port}/api/inspect`, {
+    const response = await fetch(`${local.baseUrl}/api/inspect`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ bundleDir: example }),
@@ -56,7 +95,7 @@ test("local web API exposes the real normalized fixture instead of prototype sam
     assert.deepEqual(payload.article.categories, ["Workflow", "WordPress"]);
     assert.deepEqual(payload.article.tags, ["Markdown", "Gutenberg"]);
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await local.close();
   }
 });
 
@@ -119,4 +158,92 @@ test("submission progress comes from the real pipeline and completed retry is re
   assert.equal(second.reused, true);
   assert.deepEqual(retryPhases, ["completed"]);
   assert.equal(wp.calls.length, callCount);
+});
+
+test("local web API refuses a second identical submission while the first is active", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "pressdrop-ui-lock-"));
+  const profilePath = await writeProfileFixture(temp);
+  const stateFile = path.join(temp, "state.json");
+  const inspected = await inspectBundle(example);
+  const wp = fakeWordPress();
+  let releaseTaxonomy!: () => void;
+  const taxonomyGate = new Promise<void>((resolve) => { releaseTaxonomy = resolve; });
+  let blocked = true;
+  const blockingFetch: typeof fetch = async (input, init = {}) => {
+    const url = new URL(String(input));
+    const method = init.method ?? "GET";
+    if (blocked && method === "GET" && url.pathname.endsWith("/categories")) {
+      await taxonomyGate;
+      blocked = false;
+    }
+    return wp.fetchImpl(input, init);
+  };
+  const local = await startLocalServer({ stateFile, clientOptions: { fetchImpl: blockingFetch } });
+  const body = submissionBody(profilePath, inspected.article.source.fingerprint);
+  try {
+    const first = await fetch(`${local.baseUrl}/api/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.equal(first.status, 202);
+    const firstPayload = await first.json();
+
+    const second = await fetch(`${local.baseUrl}/api/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    assert.equal(second.status, 400);
+    const secondPayload = await second.json();
+    assert.equal(secondPayload.error.code, "STATE_ERROR");
+    assert.match(secondPayload.error.message, /already running/);
+
+    releaseTaxonomy();
+    const finished = await waitForJob(local.baseUrl, firstPayload.jobId);
+    assert.equal(finished.status, "completed");
+    assert.equal(wp.calls.filter((call) => call.method === "POST" && new URL(call.url).pathname.endsWith("/media")).length, 3);
+    assert.equal(wp.calls.filter((call) => call.method === "POST" && new URL(call.url).pathname.endsWith("/posts")).length, 1);
+  } finally {
+    releaseTaxonomy();
+    await local.close();
+  }
+});
+
+test("resumed submission preserves prior media side effects when taxonomy/auth later fails", async () => {
+  const temp = await mkdtemp(path.join(os.tmpdir(), "pressdrop-ui-state-"));
+  const profilePath = await writeProfileFixture(temp);
+  const stateFile = path.join(temp, "state.json");
+  const inspected = await inspectBundle(example);
+  const key = submissionKey(profile, inspected.article.source.fingerprint);
+  const stateStore = new JsonSubmissionStateStore(stateFile);
+  await stateStore.put({
+    version: 1,
+    key,
+    profileId: profile.id,
+    baseUrl: profile.baseUrl,
+    sourceFingerprint: inspected.article.source.fingerprint,
+    phase: "uploading_media",
+    media: {
+      "media:already-uploaded.png": { id: 77, url: "https://wp.example.test/uploads/already-uploaded.png" },
+    },
+  });
+  const authFailureFetch: typeof fetch = async () => jsonResponse({ code: "rest_not_logged_in", message: "bad credentials" }, 401);
+  const local = await startLocalServer({ stateFile, clientOptions: { fetchImpl: authFailureFetch } });
+  try {
+    const response = await fetch(`${local.baseUrl}/api/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(submissionBody(profilePath, inspected.article.source.fingerprint)),
+    });
+    assert.equal(response.status, 202);
+    const started = await response.json();
+    const finished = await waitForJob(local.baseUrl, started.jobId);
+    assert.equal(finished.status, "failed");
+    assert.equal(finished.phase, "resolving_taxonomy");
+    assert.equal(finished.error.code, "AUTH_ERROR");
+    assert.equal(finished.error.remoteMutation, "media_may_have_changed");
+  } finally {
+    await local.close();
+  }
 });
