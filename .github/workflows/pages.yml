@@ -44,6 +44,8 @@ jobs:
 
       - name: Build web prototype
         working-directory: web
+        env:
+          VITE_PRESSDROP_DEMO: "1"
         run: npm run build -- --base "${{ steps.pages.outputs.base_path }}/"
 
       - name: Upload Pages artifact

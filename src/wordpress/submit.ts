@@ -8,6 +8,8 @@ import { WordPressClient, type CreatedDraft, type WordPressClientOptions, type W
 import type { WordPressSiteProfile } from "./site-profile.ts";
 import { submissionKey, type SubmissionStateRecord, type SubmissionStateStore } from "./state.ts";
 
+export type SubmissionProgressPhase = "resolving_taxonomy" | "uploading_media" | "creating_post" | "completed";
+
 export interface SubmissionResult {
   reused: boolean;
   submissionKey: string;
@@ -19,11 +21,27 @@ export interface SubmissionResult {
   warnings: string[];
 }
 
+export interface SubmissionPreflightResult {
+  article: NormalizedArticle;
+  warnings: string[];
+  categoryIds: number[];
+  tagIds: number[];
+}
+
 export interface SubmitBundleOptions {
   bundleDir: string;
   profile: WordPressSiteProfile;
   credentials: WordPressCredentials;
   stateStore: SubmissionStateStore;
+  clientOptions?: WordPressClientOptions;
+  expectedSourceFingerprint?: string;
+  onProgress?: (phase: SubmissionProgressPhase) => void;
+}
+
+export interface PreflightBundleOptions {
+  bundleDir: string;
+  profile: WordPressSiteProfile;
+  credentials: WordPressCredentials;
   clientOptions?: WordPressClientOptions;
 }
 
@@ -55,13 +73,30 @@ function completedResult(
   };
 }
 
+export async function preflightBundle(options: PreflightBundleOptions): Promise<SubmissionPreflightResult> {
+  const bundleDir = path.resolve(options.bundleDir);
+  const { article, warnings } = await inspectBundle(bundleDir);
+  const client = new WordPressClient(options.profile, options.credentials, options.clientOptions);
+  const categoryIds = await client.resolveTerms("categories", article.categories);
+  const tagIds = await client.resolveTerms("tags", article.tags);
+  return { article, warnings, categoryIds, tagIds };
+}
+
 export async function submitBundle(options: SubmitBundleOptions): Promise<SubmissionResult> {
   const bundleDir = path.resolve(options.bundleDir);
   const { article, warnings } = await inspectBundle(bundleDir);
+  if (options.expectedSourceFingerprint && article.source.fingerprint !== options.expectedSourceFingerprint) {
+    throw new PressDropError(
+      "VALIDATION_ERROR",
+      "The manuscript bundle changed after preview; inspect it again before creating a WordPress draft",
+      { expectedSourceFingerprint: options.expectedSourceFingerprint, actualSourceFingerprint: article.source.fingerprint },
+    );
+  }
   const key = submissionKey(options.profile, article.source.fingerprint);
   let record = await options.stateStore.get(key);
 
   if (record?.phase === "completed") {
+    options.onProgress?.("completed");
     return completedResult(record, [], [], warnings, true);
   }
   if (record?.phase === "creating_post" && !record.post) {
@@ -82,6 +117,7 @@ export async function submitBundle(options: SubmitBundleOptions): Promise<Submis
 
   const client = new WordPressClient(options.profile, options.credentials, options.clientOptions);
 
+  options.onProgress?.("resolving_taxonomy");
   // Resolve every taxonomy before media upload so a typo cannot leave remote media side effects.
   const categoryIds = await client.resolveTerms("categories", article.categories);
   const tagIds = await client.resolveTerms("tags", article.tags);
@@ -99,6 +135,7 @@ export async function submitBundle(options: SubmitBundleOptions): Promise<Submis
   record.tagIds = tagIds;
   await options.stateStore.put(record);
 
+  options.onProgress?.("uploading_media");
   const metadata = imageMetadata(article);
   for (const media of article.media) {
     if (record.media[media.ref]) continue;
@@ -119,6 +156,7 @@ export async function submitBundle(options: SubmitBundleOptions): Promise<Submis
     throw new PressDropError("STATE_ERROR", `Uploaded featured media is missing from submission state: ${article.featuredMediaRef}`);
   }
 
+  options.onProgress?.("creating_post");
   record.phase = "creating_post";
   await options.stateStore.put(record);
 
@@ -133,5 +171,6 @@ export async function submitBundle(options: SubmitBundleOptions): Promise<Submis
   record.post = post;
   record.phase = "completed";
   await options.stateStore.put(record);
+  options.onProgress?.("completed");
   return completedResult(record, categoryIds, tagIds, warnings, false);
 }

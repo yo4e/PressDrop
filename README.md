@@ -6,15 +6,31 @@ PressDrop is an experimental, general-purpose submission assistant for turning s
 
 The goal is not to replace WordPress, invent another CMS, or generate articles with AI. PressDrop focuses on the awkward middle step between a finished manuscript and a correctly structured WordPress draft: parsing the manuscript, validating its structure, uploading media, mapping metadata, generating Gutenberg blocks, and creating a draft that a human can review.
 
-> Status: **first WordPress submission slice implemented against deterministic mocks**. Markdown + local images can be parsed, normalized, validated, uploaded/mapped through the WordPress REST contract, and turned into a `draft`. Live WordPress verification is still pending.
+> Status: **the local UI is connected to the real PressDrop parser / validation / WordPress submission core and covered by deterministic mock integration tests**. Markdown + local images can be inspected in the browser, taxonomy can be preflighted, and the explicit submit flow uses the existing draft-only pipeline. Live WordPress verification is still pending.
 
-## UI prototype
+## Local UI and prototype
 
-The first human-facing submission flow is available as a responsive browser prototype:
+PressDrop now has two browser surfaces with deliberately different purposes:
+
+- the **local UI** is the real submission workspace and talks to a small localhost Node bridge that reuses the existing PressDrop core;
+- the **GitHub Pages site** remains a sample-data prototype for reviewing the interaction design without filesystem access, credentials, or WordPress side effects.
 
 **[Open the PressDrop UI prototype](https://yo4e.github.io/PressDrop/)**
 
-It covers manuscript selection, validation and warning states, article preview, WordPress destination setup, explicit draft creation, progress, success, authentication failure, taxonomy mismatch, and duplicate-candidate handling. The current site uses realistic sample data and does not parse dropped bundles or contact WordPress yet; those integrations remain a follow-up implementation step.
+For the real local flow, install both root and web dependencies, build the UI, and start the localhost bridge:
+
+```bash
+npm ci
+npm --prefix web ci
+npm run web:build
+npm run web:server
+```
+
+Then open `http://127.0.0.1:43110`.
+
+The local UI runs real bundles through `inspectBundle()` / validation, renders normalized Article data, performs taxonomy-only preflight through the existing WordPress client, and invokes the existing submission pipeline only after an explicit **Create draft** action. Runtime credentials are not written to manuscripts, site profiles, frontend artifacts, logs, or retry state. The exact previewed source fingerprint is also pinned at submission time so a manuscript changed after preview is blocked before any WordPress request.
+
+See [Local UI](docs/LOCAL_UI.md) for development commands, architecture, safety boundaries, error-state behavior, and the live-verification boundary. The sample-data prototype remains available locally with `?demo=1`.
 
 ## Why PressDrop?
 
@@ -276,7 +292,9 @@ The important decision is the architecture, not a particular framework. See [DES
 
 ```text
 .
-├── .github/workflows/test.yml
+├── .github/workflows/
+│   ├── pages.yml
+│   └── test.yml
 ├── .gitignore
 ├── config/
 │   └── site.example.json
@@ -292,6 +310,7 @@ The important decision is the architecture, not a particular framework. See [DES
 │   ├── model.ts
 │   ├── pipeline.ts
 │   ├── validation.ts
+│   ├── web-server.ts
 │   └── wordpress/
 │       ├── client.ts
 │       ├── site-profile.ts
@@ -299,12 +318,20 @@ The important decision is the architecture, not a particular framework. See [DES
 │       └── submit.ts
 ├── test/
 │   ├── pressdrop.test.ts
+│   ├── ui-integration.test.ts
 │   └── wordpress.test.ts
+├── web/
+│   └── src/
+│       ├── App.jsx
+│       ├── RealApp.jsx
+│       ├── api.js
+│       └── view-model.js
 ├── package.json
 ├── README.md
 └── docs/
     ├── DESIGN.md
     ├── INITIAL_IMPLEMENTATION.md
+    ├── LOCAL_UI.md
     ├── MARKDOWN_V1.md
     ├── WORDPRESS_SUBMISSION.md
     └── research/
@@ -315,7 +342,7 @@ The important decision is the architecture, not a particular framework. See [DES
 
 Several product decisions intentionally remain open:
 
-- Should the first user-facing form be a CLI, local web app, desktop app, or hosted service?
+- Should the local web host eventually become a packaged desktop app or another distribution form?
 - How should site profiles express custom fields and site-specific Gutenberg blocks?
 - How should explicit featured-image alt/caption metadata be represented in a future manuscript schema?
 - What reconciliation workflow should resolve `DUPLICATE_CANDIDATE` state after ambiguous remote outcomes?
