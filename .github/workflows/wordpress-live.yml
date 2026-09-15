@@ -46,7 +46,7 @@ jobs:
           curl -fsS http://127.0.0.1:8080/wp-admin/install.php >/dev/null
 
           wp() {
-            docker run --rm --network pressdrop-live               -v pressdrop-wp-data:/var/www/html               -e WORDPRESS_DB_HOST=pressdrop-db:3306               -e WORDPRESS_DB_USER=wordpress               -e WORDPRESS_DB_PASSWORD="$dbpw"               -e WORDPRESS_DB_NAME=wordpress               wordpress:cli "$@"
+            docker run --rm --network pressdrop-live               -v pressdrop-wp-data:/var/www/html               -e WORDPRESS_DB_HOST=pressdrop-db:3306               -e WORDPRESS_DB_USER=wordpress               -e WORDPRESS_DB_PASSWORD="$dbpw"               -e WORDPRESS_DB_NAME=wordpress               wordpress:cli wp "$@"
           }
 
           wp core install --url=http://127.0.0.1:8080 --title="PressDrop CI" --admin_user=pressdrop-admin --admin_password="$adminpw" --admin_email=pressdrop-admin@example.invalid --skip-email
