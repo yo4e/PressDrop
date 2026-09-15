@@ -88,8 +88,8 @@ test("PressDrop submits once to disposable real WordPress and reuses the complet
     };
     assert.equal(post.id, first.post.id);
     assert.equal(post.status, "draft");
-    assert.deepEqual(post.categories, first.categoryIds);
-    assert.deepEqual(post.tags, first.tagIds);
+    assert.deepEqual([...post.categories].sort((a, b) => a - b), [...first.categoryIds].sort((a, b) => a - b));
+    assert.deepEqual([...post.tags].sort((a, b) => a - b), [...first.tagIds].sort((a, b) => a - b));
 
     const rawContent = post.content.raw ?? "";
     assert.match(rawContent, /<!-- wp:heading/);
