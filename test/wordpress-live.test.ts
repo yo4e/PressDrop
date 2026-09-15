@@ -23,6 +23,31 @@ test("PressDrop submits once to disposable real WordPress and reuses the complet
   const stateStore = new JsonSubmissionStateStore(statePath);
 
   try {
+    const probeResponse = await fetch(
+      endpoint + "/wp-json/wp/v2/categories?search=Workflow&per_page=100&_fields=id%2Cname",
+      {
+        headers: {
+          Authorization: "Basic " + Buffer.from(user + ":" + token, "utf8").toString("base64"),
+        },
+      },
+    );
+    const probeText = await probeResponse.text();
+    assert.equal(
+      probeResponse.ok,
+      true,
+      "WordPress taxonomy probe returned HTTP " + probeResponse.status + ": " + probeText.slice(0, 300),
+    );
+    let probePayload: unknown;
+    try {
+      probePayload = JSON.parse(probeText);
+    } catch {
+      assert.fail("WordPress taxonomy probe returned non-JSON: " + probeText.slice(0, 300));
+    }
+    assert.ok(
+      Array.isArray(probePayload),
+      "WordPress taxonomy probe returned unexpected JSON: " + JSON.stringify(probePayload).slice(0, 500),
+    );
+
     const preflight = await preflightBundle({
       bundleDir: path.resolve("examples/basic"),
       profile,
