@@ -1,0 +1,73 @@
+name: real-wordpress-smoke
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-wordpress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start disposable WordPress
+        run: |
+          set -euo pipefail
+          docker network create pressdrop-live
+          docker volume create pressdrop-wp-data
+          dbpw="$(openssl rand -hex 24)"
+          rootpw="$(openssl rand -hex 24)"
+          adminpw="$(openssl rand -hex 24)"
+          userpw="$(openssl rand -hex 24)"
+          docker run -d --name pressdrop-db --network pressdrop-live \
+            -e MYSQL_DATABASE=wordpress \
+            -e MYSQL_USER=wordpress \
+            -e MYSQL_PASSWORD="$dbpw" \
+            -e MYSQL_ROOT_PASSWORD="$rootpw" \
+            mysql:8.4
+          for _ in $(seq 1 60); do
+            docker exec pressdrop-db mysqladmin ping -h 127.0.0.1 -uroot -p"$rootpw" --silent >/dev/null 2>&1 && break
+            sleep 2
+          done
+          docker run -d --name pressdrop-wp --network pressdrop-live \
+            -p 127.0.0.1:8080:80 \
+            -v pressdrop-wp-data:/var/www/html \
+            -e WORDPRESS_DB_HOST=pressdrop-db:3306 \
+            -e WORDPRESS_DB_USER=wordpress \
+            -e WORDPRESS_DB_PASSWORD="$dbpw" \
+            -e WORDPRESS_DB_NAME=wordpress \
+            -e "WORDPRESS_CONFIG_EXTRA=define('WP_ENVIRONMENT_TYPE', 'local');" \
+            wordpress:6.8-php8.3-apache
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:8080/wp-admin/install.php >/dev/null 2>&1 && break
+            sleep 2
+          done
+          wp() { docker run --rm --network pressdrop-live -v pressdrop-wp-data:/var/www/html wordpress:cli "$@"; }
+          wp core install --url=http://127.0.0.1:8080 --title="PressDrop CI" --admin_user=pressdrop-admin --admin_password="$adminpw" --admin_email=pressdrop-admin@example.invalid --skip-email
+          wp user create pressdrop-runner pressdrop-runner@example.invalid --role=author --user_pass="$userpw"
+          wp term create category Workflow --slug=workflow
+          wp term create category WordPress --slug=wordpress
+          wp term create post_tag Markdown --slug=markdown
+          wp term create post_tag Gutenberg --slug=gutenberg
+          ap="$(wp user application-password create pressdrop-runner pressdrop-ci --porcelain | tr -d '\r\n')"
+          echo "::add-mask::$ap"
+          echo "PRESSDROP_LIVE_BASE_URL=http://127.0.0.1:8080" >> "$GITHUB_ENV"
+          echo "PRESSDROP_LIVE_USERNAME=pressdrop-runner" >> "$GITHUB_ENV"
+          echo "PRESSDROP_LIVE_TOKEN=$ap" >> "$GITHUB_ENV"
+      - name: Run real WordPress smoke
+        run: node --experimental-strip-types --test test/wordpress-live.test.ts
+      - name: Clean up
+        if: always()
+        run: |
+          docker rm -f pressdrop-wp pressdrop-db >/dev/null 2>&1 || true
+          docker volume rm pressdrop-wp-data >/dev/null 2>&1 || true
+          docker network rm pressdrop-live >/dev/null 2>&1 || true
