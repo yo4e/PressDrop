@@ -1,6 +1,6 @@
 # WordPress draft submission
 
-Status: **implemented against deterministic mock WordPress REST endpoints; live WordPress verification pending**
+Status: **implemented against deterministic mock REST endpoints and verified by an automated disposable real-WordPress smoke test; deployed-host and visual editor verification remain pending**
 
 This document describes the first WordPress-facing PressDrop slice added after the local Markdown → normalized Article → Gutenberg pipeline.
 
@@ -47,7 +47,7 @@ Rules:
 - credentials must not be embedded in the URL or committed in the profile;
 - only the standard `posts` REST endpoint is supported in this slice.
 
-The code permits HTTP only through an explicit test-only profile option used by the local mock server tests.
+The code permits HTTP only through an explicit test-only profile option used by local mocks and the loopback-only disposable WordPress CI environment.
 
 ## Credentials
 
@@ -162,7 +162,7 @@ This is conservative by design. The first implementation prefers a manual reconc
 
 ## Automated verification
 
-CI does not need a WordPress installation or credentials. `test/wordpress.test.ts` starts a deterministic local HTTP server that exercises the expected REST contract, including:
+The normal test suite remains credential-free. `test/wordpress.test.ts` starts a deterministic local HTTP server that exercises the expected REST contract, including:
 
 - category and tag resolution;
 - missing taxonomy rejection before media upload;
@@ -176,8 +176,22 @@ CI does not need a WordPress installation or credentials. `test/wordpress.test.t
 - uncertain post-creation duplicate protection;
 - HTTPS enforcement outside test mode.
 
-## Live verification still pending
+A separate `.github/workflows/wordpress-live.yml` job adds a narrower integration layer against a fresh disposable WordPress 6.8 + MySQL installation. The workflow creates its WordPress account and Application Password at runtime, binds WordPress to runner loopback only, runs the canonical `examples/basic` bundle, and destroys the environment afterward.
 
-The mock tests prove PressDrop's own request sequencing and payload contract, but they do not prove compatibility with a particular deployed WordPress version, hosting layer, security plugin, media policy, or reverse proxy.
+That real-WordPress smoke verifies:
 
-Before treating a real publication as supported, run a disposable/test-site shakeout with a dedicated minimum-permission WordPress account and Application Password, then inspect the resulting Gutenberg draft in wp-admin.
+- taxonomy preflight leaves post/media counts unchanged;
+- requested categories and tags resolve on WordPress;
+- all canonical media items upload successfully;
+- inline media alt text and captions are stored by WordPress;
+- Gutenberg heading/image block serialization is stored on the draft;
+- the configured featured image ID is stored on the post;
+- the resulting post status is `draft`;
+- an identical completed retry returns the same post/media result without additional post or media creation;
+- runtime username/Application Password do not appear in PressDrop retry state.
+
+## Remaining live verification boundary
+
+The disposable integration test proves compatibility with an unmodified WordPress core installation under the controlled CI setup. It does **not** establish compatibility with arbitrary deployed hosting, security plugins, reverse proxies, custom media policies, custom blocks, or publication-specific WordPress configuration.
+
+It also does not replace the user-facing shakeout required by Issue #12: run a realistic manuscript through the normal local UI, open the resulting draft in real wp-admin/Gutenberg, inspect the rendered editor result, and record concrete workflow friction before choosing the next product priority.

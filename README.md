@@ -6,7 +6,7 @@ PressDrop is an experimental, general-purpose submission assistant for turning s
 
 The goal is not to replace WordPress, invent another CMS, or generate articles with AI. PressDrop focuses on the awkward middle step between a finished manuscript and a correctly structured WordPress draft: parsing the manuscript, validating its structure, uploading media, mapping metadata, generating Gutenberg blocks, and creating a draft that a human can review.
 
-> Status: **the local UI is connected to the real PressDrop parser / validation / WordPress submission core and covered by deterministic mock integration tests**. Markdown + local images can be inspected in the browser, taxonomy can be preflighted, and the explicit submit flow uses the existing draft-only pipeline. Live WordPress verification is still pending.
+> Status: **the local UI is connected to the real PressDrop parser / validation / WordPress submission core, with deterministic mocks plus a disposable real-WordPress smoke test**. Markdown + local images can be inspected in the browser, taxonomy can be preflighted, and the explicit submit flow uses the existing draft-only pipeline. CI now verifies the core submission path against a fresh WordPress installation, including read-only preflight, real media metadata, Gutenberg content, featured image, draft status, and side-effect-free completed retry. Deployed-host compatibility and a visual wp-admin / normal-UI usability pass are still pending.
 
 ## Local UI and prototype
 
