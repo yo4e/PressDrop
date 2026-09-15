@@ -50,6 +50,11 @@ jobs:
           }
 
           wp core install --url=http://127.0.0.1:8080 --title="PressDrop CI" --admin_user=pressdrop-admin --admin_password="$adminpw" --admin_email=pressdrop-admin@example.invalid --skip-email
+          docker exec pressdrop-wp chown -R www-data:www-data /var/www/html
+          wp rewrite structure "/%postname%/" --hard
+          wp rewrite flush --hard
+          curl -fsS http://127.0.0.1:8080/wp-json/ >/dev/null
+
           wp user create pressdrop-runner pressdrop-runner@example.invalid --role=author --user_pass="$userpw"
           wp term create category Workflow --slug=workflow
           wp term create category WordPress --slug=wordpress
