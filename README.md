@@ -359,4 +359,4 @@ Read the full report: [docs/research/wordpress-submission-assistant-research.md]
 
 ## License
 
-Not decided yet.
+MIT License. See [LICENSE](LICENSE).
