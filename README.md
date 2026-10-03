@@ -2,11 +2,38 @@
 
 **Drop a manuscript in. Get a WordPress draft out.**
 
-PressDrop is an experimental, general-purpose submission assistant for turning structured manuscripts into clean WordPress drafts.
+PressDrop is an experimental submission assistant for turning a prepared Markdown manuscript and local images into a reviewable WordPress draft.
 
 The goal is not to replace WordPress, invent another CMS, or generate articles with AI. PressDrop focuses on the awkward middle step between a finished manuscript and a correctly structured WordPress draft: parsing the manuscript, validating its structure, uploading media, mapping metadata, generating Gutenberg blocks, and creating a draft that a human can review.
 
-> Status: **the local UI is connected to the real PressDrop parser / validation / WordPress submission core, with deterministic mocks plus a disposable real-WordPress smoke test**. Markdown + local images can be inspected in the browser, taxonomy can be preflighted, and the explicit submit flow uses the existing draft-only pipeline. CI now verifies the core submission path against a fresh WordPress installation, including read-only preflight, real media metadata, Gutenberg content, featured image, draft status, and side-effect-free completed retry. A normal-UI and visual Gutenberg pass has also succeeded against disposable local WordPress; see [the reproducible Mac test](docs/DISPOSABLE_UI_TEST.md). Deployed-host compatibility remains pending.
+## Current scope: 0.1.0
+
+The first usable draft workflow is verified: **prepared Markdown + local images → preview → taxonomy verification → explicit Create draft → Gutenberg review**. It supports standard posts, paragraph/heading/image blocks, inline alt/caption/credit, a featured image, existing categories/tags, and safe reuse of an identical completed submission. It never publishes a post.
+
+Verified on disposable WordPress 6.8 through the normal local UI and actual Gutenberg editor, plus automated real-WordPress CI. No invalid-block warning appeared in the tested article; retry left one draft and three media items. See [release scope and limits](docs/RELEASE_0.1.0.md) and [reproducible test results](docs/DISPOSABLE_UI_TEST.md).
+
+This is an initial `0.1.0` release, not a claim of universal WordPress compatibility. Deployed hosts/plugins, DOCX/Google Docs input, custom blocks, and arbitrary custom-field writing remain outside the verified scope. Local image preview lists metadata rather than thumbnails; paths and runtime credentials are entered manually. A timed comparison with direct AI screen entry was not performed.
+
+### Try safely without a WordPress account
+
+Requirements: Node.js **22.6 or later** and npm; an initial internet download is needed. Clone this repository and run from its root:
+
+```bash
+npm ci
+npm --prefix web ci
+npm run check
+npm run test:ui:wordpress
+```
+
+Open the printed UI URL and use the generated sample/profile paths. Enter `session` in both connection fields; real test credentials stay in launcher memory. Review the preview and taxonomy before explicitly creating a draft. Open the printed disposable wp-admin login URL to inspect Gutenberg. Close the test tabs and press Ctrl+C when finished. No Docker, root certificate, global install, persistent WordPress service, or production site is required.
+
+For an automated normal-UI API smoke with cleanup:
+
+```bash
+npm run test:ui:wordpress -- --smoke
+```
+
+Both modes use only an exact disposable loopback instance. The normal product UI still requires HTTPS; there is no environment-variable HTTP bypass. Full [setup and cleanup instructions](docs/DISPOSABLE_UI_TEST.md).
 
 ## Local UI and prototype
 
@@ -109,7 +136,7 @@ local Gutenberg serialization
 
 The canonical fixture lives in [`examples/basic/`](examples/basic/). The implemented manuscript rules are documented in [PressDrop Markdown v1](docs/MARKDOWN_V1.md).
 
-Requirements: Node.js 22.6 or later. The current implementation uses Node's built-in TypeScript type stripping so the first slices stay dependency-free.
+Requirements: Node.js 22.6 or later. The core uses Node's built-in TypeScript type stripping; project development dependencies provide the disposable WordPress test tooling.
 
 ```bash
 npm run inspect
@@ -179,7 +206,7 @@ The default local retry state is `.pressdrop/state.json`, which is ignored by Gi
 
 The current WordPress behavior is intentionally strict:
 
-- HTTPS is required outside test-only mock mode;
+- HTTPS is required outside explicit disposable loopback tests; authenticated REST redirects are refused;
 - requested categories/tags must already exist and match exactly;
 - missing taxonomy terms block the run before media upload;
 - media IDs/URLs returned by WordPress replace local placeholders in final Gutenberg content;
