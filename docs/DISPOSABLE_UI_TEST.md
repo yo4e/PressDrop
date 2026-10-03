@@ -29,7 +29,7 @@ npm run test:ui:wordpress -- --smoke
 - Product `loadSiteProfile` still requires HTTPS. The launcher supplies a programmatic capability allowing only its exact WordPress origin. No environment variable or UI checkbox can enable HTTP.
 - Test UI rejects mismatched Host/Origin and non-loopback socket addresses. Literal IPv6 `::1` is covered by profile boundary tests; the actual launcher uses IPv4.
 - Authenticated WordPress requests refuse redirects, including same-host redirects. The test fetch adapter checks the exact instance origin before attaching the in-memory credential.
-- WordPress environment is local; an ephemeral author account/Application Password is created inside it. The admin login helper exists only in this disposable instance. Test WordPress outbound HTTP is blocked after its initial download.
+- WordPress environment is local; an ephemeral author account with a random runtime username/Application Password is created inside it. The admin login helper exists only in this disposable instance. Test WordPress outbound HTTP is blocked after its initial download.
 - The installer default posts/pages are removed before the test. Only one sample draft is created; no publish action is performed.
 
 ## Observed 2026-10-03
