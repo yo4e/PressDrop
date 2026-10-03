@@ -62,10 +62,11 @@ try {
   });
   const php = await handler.getPrimaryPhp();
   const adminPassword = randomBytes(32).toString("hex");
+  const runtimeUsername = `pressdrop-${randomBytes(12).toString("hex")}`;
   const setup = await php.run({ code: `<?php require '/wordpress/wp-load.php';
     wp_set_password('${adminPassword}', 1);
     foreach(get_posts(['post_type'=>['post','page'],'post_status'=>'any','numberposts'=>-1]) as $post) wp_delete_post($post->ID,true);
-    $user = wp_insert_user(['user_login'=>'pressdrop-session','user_pass'=>wp_generate_password(40),'user_email'=>'session@example.invalid','role'=>'author']);
+    $user = wp_insert_user(['user_login'=>'${runtimeUsername}','display_name'=>'PressDrop sample author','user_pass'=>wp_generate_password(40),'user_email'=>'session@example.invalid','role'=>'author']);
     if(is_wp_error($user)) throw new Exception('User creation failed');
     $app=WP_Application_Passwords::create_new_application_password($user,['name'=>'Disposable PressDrop']);
     if(is_wp_error($app)) throw new Exception('Credential creation failed');
@@ -87,7 +88,7 @@ try {
     clientOptions: { fetchImpl: async (input, init) => {
       if (new URL(String(input)).origin !== wpUrl) throw new Error("Test request escaped loopback instance");
       return fetch(input, { ...init, redirect: "error", headers: { ...init?.headers,
-        Authorization: `Basic ${Buffer.from(`pressdrop-session:${secret}`).toString("base64")}` } });
+        Authorization: `Basic ${Buffer.from(`${runtimeUsername}:${secret}`).toString("base64")}` } });
     } } });
   await new Promise<void>((resolve) => ui!.listen(0, "127.0.0.1", resolve));
   console.log(JSON.stringify({ mode: "DISPOSABLE TEST ONLY", ui: ui.address(), wordpress: wp.address(), bundleDir: path.join(root, "sample"), profilePath: path.join(root, "site.json"),
