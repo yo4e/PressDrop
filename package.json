@@ -14,6 +14,15 @@
     "test:web": "npm --prefix web test",
     "web:build": "npm --prefix web run build",
     "web:server": "node --experimental-strip-types src/web-server.ts",
-    "check": "npm test && npm run test:web && npm run web:build"
+    "check": "npm test && npm run test:web && npm run web:build",
+    "test:ui:wordpress": "node --experimental-strip-types scripts/disposable-ui.ts"
+  },
+  "devDependencies": {
+    "@wp-playground/cli": "3.1.0"
+  },
+  "overrides": {
+    "ws": "8.21.0",
+    "ajv": "8.18.0",
+    "qs": "6.16.0"
   }
 }

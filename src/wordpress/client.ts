@@ -82,6 +82,7 @@ export class WordPressClient {
     try {
       response = await this.#fetch(this.#url(relative), {
         ...init,
+        redirect: "error",
         headers: {
           Authorization: this.#authHeader(),
           ...(init.headers ?? {}),

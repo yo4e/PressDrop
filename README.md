@@ -6,7 +6,7 @@ PressDrop is an experimental, general-purpose submission assistant for turning s
 
 The goal is not to replace WordPress, invent another CMS, or generate articles with AI. PressDrop focuses on the awkward middle step between a finished manuscript and a correctly structured WordPress draft: parsing the manuscript, validating its structure, uploading media, mapping metadata, generating Gutenberg blocks, and creating a draft that a human can review.
 
-> Status: **the local UI is connected to the real PressDrop parser / validation / WordPress submission core, with deterministic mocks plus a disposable real-WordPress smoke test**. Markdown + local images can be inspected in the browser, taxonomy can be preflighted, and the explicit submit flow uses the existing draft-only pipeline. CI now verifies the core submission path against a fresh WordPress installation, including read-only preflight, real media metadata, Gutenberg content, featured image, draft status, and side-effect-free completed retry. Deployed-host compatibility and a visual wp-admin / normal-UI usability pass are still pending.
+> Status: **the local UI is connected to the real PressDrop parser / validation / WordPress submission core, with deterministic mocks plus a disposable real-WordPress smoke test**. Markdown + local images can be inspected in the browser, taxonomy can be preflighted, and the explicit submit flow uses the existing draft-only pipeline. CI now verifies the core submission path against a fresh WordPress installation, including read-only preflight, real media metadata, Gutenberg content, featured image, draft status, and side-effect-free completed retry. A normal-UI and visual Gutenberg pass has also succeeded against disposable local WordPress; see [the reproducible Mac test](docs/DISPOSABLE_UI_TEST.md). Deployed-host compatibility remains pending.
 
 ## Local UI and prototype
 
@@ -188,7 +188,7 @@ The current WordPress behavior is intentionally strict:
 - an identical completed submission is reused without new REST side effects;
 - if a media upload or draft creation may have succeeded but its HTTP result was lost, automatic retry stops with `DUPLICATE_CANDIDATE` instead of risking a duplicate.
 
-Automated tests use a deterministic local mock WordPress server; CI needs no credentials or live site. **Compatibility with a real WordPress installation is still pending a test-site shakeout.**
+Automated tests use deterministic mocks plus disposable real WordPress in CI. The normal UI and Gutenberg were also verified on a disposable Mac instance; [results and reproduction](docs/DISPOSABLE_UI_TEST.md). Deployed-host compatibility remains unverified.
 
 See [WordPress draft submission](docs/WORDPRESS_SUBMISSION.md) for configuration, REST behavior, state semantics, and live-verification boundaries.
 

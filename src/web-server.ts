@@ -43,6 +43,8 @@ interface WebServerOptions {
   stateFile?: string;
   webDistDir?: string;
   clientOptions?: WordPressClientOptions;
+  // Only supplied by the disposable test launcher; never read from environment/UI.
+  disposableTestSite?: { baseUrl: string };
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -192,13 +194,41 @@ async function serveWeb(res: ServerResponse, pathname: string, webDistDir: strin
 export function createPressDropWebServer(options: WebServerOptions = {}) {
   const stateFile = options.stateFile ?? process.env.PRESSDROP_STATE_FILE ?? ".pressdrop/state.json";
   const webDistDir = options.webDistDir ?? path.resolve("web/dist");
+  const testTarget = options.disposableTestSite?.baseUrl;
+  if (testTarget) {
+    const target = new URL(testTarget);
+    if (target.protocol !== "http:" || !["127.0.0.1", "[::1]"].includes(target.hostname)
+      || !target.port || target.pathname !== "/" || target.search || target.hash || target.username || target.password
+      || target.origin !== testTarget) {
+      throw new PressDropError("SITE_PROFILE_ERROR", "Disposable test target must be an exact HTTP loopback origin with a port");
+    }
+  }
+  async function readProfile(file: string) {
+    if (!testTarget) return loadSiteProfile(file);
+    const input = JSON.parse(await readFile(file, "utf8"));
+    if (input.baseUrl !== testTarget) {
+      throw new PressDropError("SITE_PROFILE_ERROR", "Disposable test UI only accepts its own WordPress instance");
+    }
+    // Still validate every profile field; HTTP exception belongs to this launcher only.
+    const { normalizeSiteProfile } = await import("./wordpress/site-profile.ts");
+    return normalizeSiteProfile(input, { allowInsecureHttpForTests: true });
+  }
   const jobs = new Map<string, SubmissionJob>();
   const activeSubmissionKeys = new Set<string>();
 
   return createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
     try {
-      if (url.pathname.startsWith("/api/") && !isLocalOrigin(req.headers.origin)) {
+      if (testTarget) {
+        const localAddress = req.socket.localAddress;
+        const expectedHost = `${localAddress === "::1" ? "[::1]" : localAddress}:${req.socket.localPort}`;
+        if (!["127.0.0.1", "::1"].includes(localAddress ?? "") || req.headers.host !== expectedHost
+          || (req.headers.origin && req.headers.origin !== `http://${expectedHost}`)) {
+          sendJson(res, 403, { error: { code: "ORIGIN_REJECTED", message: "Disposable UI only accepts its exact loopback host and origin" } });
+          return;
+        }
+      }
+      if (!testTarget && url.pathname.startsWith("/api/") && !isLocalOrigin(req.headers.origin)) {
         sendJson(res, 403, { error: { code: "ORIGIN_REJECTED", message: "PressDrop local API only accepts localhost origins" } });
         return;
       }
@@ -218,7 +248,7 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
       if (req.method === "POST" && url.pathname === "/api/preflight") {
         const body = await readJson(req);
         const bundleDir = requireText(body, "bundleDir");
-        const profile = await loadSiteProfile(requireText(body, "profilePath"));
+        const profile = await readProfile(requireText(body, "profilePath"));
         const result = await preflightBundle({
           bundleDir,
           profile,
@@ -233,7 +263,7 @@ export function createPressDropWebServer(options: WebServerOptions = {}) {
         const body = await readJson(req);
         const bundleDir = requireText(body, "bundleDir");
         const expectedSourceFingerprint = requireText(body, "expectedSourceFingerprint");
-        const profile = await loadSiteProfile(requireText(body, "profilePath"));
+        const profile = await readProfile(requireText(body, "profilePath"));
         const credentials = credentialsFrom(body);
         const key = submissionKey(profile, expectedSourceFingerprint);
         if (activeSubmissionKeys.has(key)) {

@@ -1,6 +1,6 @@
 # WordPress draft submission
 
-Status: **implemented against deterministic mock REST endpoints and verified by an automated disposable real-WordPress smoke test; deployed-host and visual editor verification remain pending**
+Status: **implemented against deterministic mock REST endpoints and verified by an automated disposable real-WordPress smoke test; visual editor verification also completed on disposable local WordPress; deployed-host compatibility remains pending (see [Mac results](DISPOSABLE_UI_TEST.md))**
 
 This document describes the first WordPress-facing PressDrop slice added after the local Markdown → normalized Article → Gutenberg pipeline.
 
