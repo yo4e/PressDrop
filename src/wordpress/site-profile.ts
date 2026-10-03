@@ -36,7 +36,7 @@ export function normalizeSiteProfile(input: unknown, options: SiteProfileOptions
   if (url.username || url.password) {
     throw new PressDropError("SITE_PROFILE_ERROR", "Credentials must not be embedded in site profile URLs");
   }
-  if (url.protocol !== "https:" && !(options.allowInsecureHttpForTests && url.protocol === "http:")) {
+  if (url.protocol !== "https:" && !(options.allowInsecureHttpForTests && url.protocol === "http:" && ["127.0.0.1", "[::1]"].includes(url.hostname))) {
     throw new PressDropError("SITE_PROFILE_ERROR", "WordPress baseUrl must use HTTPS");
   }
   url.hash = "";

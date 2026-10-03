@@ -115,4 +115,4 @@ GitHub Pages cannot reach a user's localhost PressDrop core. The Pages workflow 
 
 ## Live WordPress boundary
 
-Automated tests use deterministic WordPress mocks. A real WordPress test site and runtime credentials are still required for the final live shakeout. Until that is performed, this implementation should not be described as live-WordPress verified.
+Automated tests use deterministic mocks and a disposable real-WordPress CI smoke. Normal UI submission, visual Gutenberg review and completed retry have also succeeded on a disposable Mac instance. See [setup, evidence and remaining limits](DISPOSABLE_UI_TEST.md); deployed-host compatibility remains unverified.
