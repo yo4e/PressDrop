@@ -16,7 +16,9 @@ This is an initial `0.1.0` release, not a claim of universal WordPress compatibi
 
 ### Try safely without a WordPress account
 
-Requirements: Node.js **22.6 or later** and npm; an initial internet download is needed. Clone this repository and run from its root:
+The local runtime and CI are pinned to Node.js 22.23.4 via `.nvmrc`, including the [October 21, 2026 security fixes](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases). Select that runtime before starting PressDrop (for nvm: `nvm install && nvm use`). Updating this repository or its `engines` field does not upgrade an already installed or running Node.js.
+
+Requirements: Node.js **22.23.4 or a newer 22.x release** and npm; an initial internet download is needed. Clone this repository and run from its root:
 
 ```bash
 npm ci
@@ -136,7 +138,7 @@ local Gutenberg serialization
 
 The canonical fixture lives in [`examples/basic/`](examples/basic/). The implemented manuscript rules are documented in [PressDrop Markdown v1](docs/MARKDOWN_V1.md).
 
-Requirements: Node.js 22.6 or later. The core uses Node's built-in TypeScript type stripping; project development dependencies provide the disposable WordPress test tooling.
+Requirements: Node.js 22.23.4 or a newer 22.x release. The core uses Node's built-in TypeScript type stripping; project development dependencies provide the disposable WordPress test tooling.
 
 ```bash
 npm run inspect

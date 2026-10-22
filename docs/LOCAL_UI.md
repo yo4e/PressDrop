@@ -23,7 +23,7 @@ The React layer does not duplicate manuscript validation, taxonomy matching, Gut
 
 ## Install
 
-Requirements: Node.js 22.6 or later.
+Requirements: Node.js 22.23.4 or a newer 22.x release.
 
 ```bash
 npm ci

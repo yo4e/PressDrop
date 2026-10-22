@@ -77,7 +77,7 @@ The directive is normalized to an image block with a stable local `mediaRef`. Ca
 
 ## Local inspection
 
-With Node.js 22.6 or later:
+With Node.js 22.23.4 or a newer 22.x release:
 
 ```bash
 npm run inspect

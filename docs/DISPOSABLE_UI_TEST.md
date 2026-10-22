@@ -1,6 +1,6 @@
 # Disposable normal-UI WordPress test on macOS
 
-This is an explicit development test launcher, not a product HTTP setting. Node >=22.6 is sufficient; no Docker, PHP installation, root certificate, global package, or production site is required. The project pins `@wp-playground/cli` 3.1.0 (its PHP/WordPress libraries and bundled SQLite integration are used; its CLI HTTP listener is not used).
+This is an explicit development test launcher, not a product HTTP setting. Node 22.23.4 or a newer 22.x release is sufficient; no Docker, PHP installation, root certificate, global package, or production site is required. The project pins `@wp-playground/cli` 3.1.0 (its PHP/WordPress libraries and bundled SQLite integration are used; its CLI HTTP listener is not used).
 
 ## Reproduce
 

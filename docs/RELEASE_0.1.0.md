@@ -10,7 +10,7 @@ Normal site profiles require HTTPS and runtime Application Passwords. An uncerta
 
 ## Safe local trial
 
-Node >=22.6, npm and initial internet access are required. From a clone of this repository:
+Node 22.23.4 or a newer 22.x release, npm and initial internet access are required. From a clone of this repository:
 
 ```sh
 npm ci
